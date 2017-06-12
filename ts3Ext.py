@@ -903,8 +903,8 @@ class plugincommand(object):
         
     """Keyword Arguments:
         - plugin -- TS3Plugin that owns the command
-        - name -- The name of the program (default: sys.argv[0])
-        - cmd -- Command to be executed
+        - name -- The name of command
+        - function -- Function to be executed
         - arguments -- Supported arguments
         - permLevel -- Minimum permission level needed to run this command.
         - usage -- A usage message (default: auto-generated from arguments)
@@ -917,7 +917,7 @@ class plugincommand(object):
         - add_help -- Add a -h/-help option
     """
     @classmethod
-    def create(cls, plugin, name, cmd, arguments={}, permLevel=userperm.SERVERADMIN, usage=None, description=None, epilog=None, prefix_chars='-', fromfile_prefix_chars=None, argument_default=None, error_on_confilct=True, add_help=True):
+    def create(cls, plugin, name, function, arguments={}, permLevel=userperm.SERVERADMIN, usage=None, description=None, epilog=None, prefix_chars='-', fromfile_prefix_chars=None, argument_default=None, error_on_confilct=True, add_help=True):
         handlerName = "resolve"
         if error_on_confilct:
             handlerName = "error"
@@ -935,7 +935,7 @@ class plugincommand(object):
                 args = arg[0]
                 kwargs = arg[1]                
                 parser.add_argument(*args, **kwargs)
-        cmd = cls(plugin, name, cmd, parser)
+        cmd = cls(plugin, name, function, parser)
         cmd.permissionlevel = permLevel
         return cmd
     
