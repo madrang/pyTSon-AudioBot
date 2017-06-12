@@ -43,7 +43,7 @@ from audiobot.mozYoutube import mozYoutube
 class audiobot(ts3plugin):
     name = "AudioBot"
     requestAutoload = False
-    version = "0.0.43"
+    version = "0.0.44"
     apiVersion = 21
     author = "Marc-Andre \"Madrang\" Ferland"
     description = "Manage music channel"
