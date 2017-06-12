@@ -11,7 +11,7 @@ Public Chat Usage:                   [ cmd = lastsong, play, stop ]
         %(name)s.cmd...              - Use a space, a dot or any of [ /, \\, |, - ]
  
 Copyright (c) 2017, Marc-Andre Ferland.
-License: BSD, see LICENSE for more details.
+License: GNU General Public License v3.0, see LICENSE for more details.
 """
 
 from ts3plugin import ts3plugin
