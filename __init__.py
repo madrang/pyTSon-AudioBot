@@ -43,7 +43,7 @@ from audiobot.mozYoutube import mozYoutube
 class audiobot(ts3plugin):
     name = "AudioBot"
     requestAutoload = False
-    version = "0.0.41"
+    version = "0.0.43"
     apiVersion = 21
     author = "Marc-Andre \"Madrang\" Ferland"
     description = "Manage music channel"
@@ -121,7 +121,7 @@ class audiobot(ts3plugin):
         
         #Hold user information
         #Need settings to work.
-        self.host = ts3SessionHost(self)
+        self.ts3host = ts3SessionHost(self)
         
         #Channel settings.
         cfgChannel = self.cfg["channel"]
@@ -204,13 +204,13 @@ class audiobot(ts3plugin):
              yield "Clicked on a Server. schid:%s id:%s" % (schid, aid)
          elif atype == 1:
              yield "Clicked on a Channel. schid:%s id:%s" % (schid, aid)
-             selectedChannel = self.host.getChannel(schid, aid)
-             if self.host.getServer(schid).me.channel == selectedChannel:
+             selectedChannel = self.ts3host.getChannel(schid, aid)
+             if self.ts3host.getServer(schid).me.channel == selectedChannel:
                 yield "My Channel"
              yield selectedChannel.name
          elif atype == 2:
              yield "Clicked on a Client. schid:%s id:%s" % (schid, aid)
-             selectedUser = self.host.getUser(schid, aid)
+             selectedUser = self.ts3host.getUser(schid, aid)
              yield "User:%s Perm:%s" % (selectedUser.name, userperm.getString(selectedUser.perm))
          else:
              yield "ItemType \""+str(atype)+"\" unknown."
@@ -293,6 +293,8 @@ class audiobot(ts3plugin):
             self.audioSession['playlist'].insert(index, newItem)
         else:
             raise ValueError("index is out of range.")
+            
+        self.ts3host.sendTextMsg("Item added to playlist: %s" % self.formatSong(newItem))
         self.onPlaylistModifiedEvent()
     
     def replyTo(self, schid, toID, msg):
@@ -326,12 +328,11 @@ class audiobot(ts3plugin):
         if reservedTabUrl.startswith("https://www.youtube.com/") or reservedTabUrl.startswith("https://youtu.be/"):
             title = self.mozRepl.get_tab_elementById_html("eow-title", tabID=0)
             if title:
-                #if songDat == self.lastSongData:
-                #    self.printLogMessage("Page returned the same song data, is Tab still loading???")
-                #    return
-                #newQuery.update({'list': queryArgs['list'][0]})
-                
                 title = YouTubeParser.textFromHTML(title)
+            #Result could be empty if page is still loading.
+            if title and title != self.audioSession['lastsong']['title']:
+                #Youtube has a tendency to reeuse the same DOM in firefox and cause it to return values from the previous page.
+                #Assume that if the video id is different we should get a different title.
                 
                 songInfo = {
                     #Browser page
@@ -357,6 +358,9 @@ class audiobot(ts3plugin):
                 self.audioSession['lastsong'].update(songInfo)
                 updated = True
                 self.printLogMessage("Updated Currently playing.")
+                
+            #Log the event if the page returned the same title.
+            elif title: self.printLogMessage("Page returned the same song data, is Tab still loading???")
             
             ytPlaylist = self.mozRepl.get_tab_elementByClassName_html("playlist-title", tabID=0)
             ytPlaylist = YouTubeParser.textFromHTML(ytPlaylist)
@@ -374,7 +378,7 @@ class audiobot(ts3plugin):
     
     def updateChannelDescription(self):
         if self.updatePlaylistChannelDescription:
-            self.host.logMsg("Generating channel description", logLevel.TRACE)
+            self.ts3host.logMsg("Generating channel description", logLevel.TRACE)
             desc = self.channelDescriptionBanner
             desc = self.formatPlaylist(msg=desc, maxLen=40)
             desc = self.formatMixTitle(msg=desc, maxLen=50)
@@ -382,7 +386,7 @@ class audiobot(ts3plugin):
             #Center text.
             desc = BBCode.center(desc)
             
-            for srv in self.host.servers:
+            for srv in self.ts3host.servers:
                 try:
                     srv.logMsg("Updating channel:\r\n%s" % desc, logLevel.INFORMATIVE)
                     srv.me.channel.description = desc
@@ -420,15 +424,21 @@ class audiobot(ts3plugin):
         
         msg += "\r\n"
         for song in self.audioSession['playlist']:
-            if 'user' in song and song['user']:
-                msg = "%s%s - " % (msg, BBCode.color(song['user'].name, userperm.getColor(song['user'].perm)))
-            title = song['title'].strip()
-            if title:
-                if len(title) > maxLen:
-                    title = title[:maxLen-2] + "..."
-                msg = "%s%s\r\n" % (msg, title)
-            else:
-                msg = "%s[Unknown]\r\n" % msg
+            msg = msg + self.formatSong(song, maxLen)
+        return msg
+    
+    def formatSong(self, song, maxLen=128):
+        msg = ""
+        if 'user' in song and song['user']:
+            msg = "%s%s - " % (msg, BBCode.color(song['user'].name, userperm.getColor(song['user'].perm)))
+        
+        title = song['title'].strip()
+        if title:
+            if len(title) > maxLen:
+                title = title[:maxLen-2] + "..."
+            msg = "%s%s\r\n" % (msg, title)
+        else:
+            msg = "%s[Unknown]\r\n" % msg
         return msg
     
     def formatMixTitle(self, msg=None, maxLen=128):
@@ -533,9 +543,7 @@ class audiobot(ts3plugin):
                 #Tab loaded a new page with a player.
                 self.printLogMessage("Url updated: %s" % reservedTabUrl)
                 if self.updateCurrentlyPlaying():
-                    curPlayingMsg = self.formatCurrentlyPlaying(msg="Currently playing!")
-                    for srv in self.host.servers:
-                        srv.me.channel.sendTextMsg(curPlayingMsg)
+                    self.ts3host.sendTextMsg(self.formatCurrentlyPlaying(msg="Currently playing!"))
             
             #Retriger timer.
             if self.onTickTimer.isSingleShot():
@@ -556,7 +564,7 @@ class audiobot(ts3plugin):
     
     def onConnectStatusChangeEvent(self, schid, status, errorNumber):
         if status == ts3defines.ConnectStatus.STATUS_CONNECTION_ESTABLISHED:
-            srv = self.host.getServer(schid)
+            srv = self.ts3host.getServer(schid)
             mynick = srv.me.name
             sp = re.split(r"\d", mynick)
             #Check if numbers where added at the end of the current nickname.
@@ -589,18 +597,13 @@ class audiobot(ts3plugin):
             user.channel.sendTextMsg("Welcome %s, friends of %s will play music, Listen and enjoy!" % (user.name, user.server.me.name))
     
     def onClientMoveEvent(self, schid, clientID, oldChannelID, newChannelID, visibility, moveMessage):
-        currentChannel = self.host.getServer(schid).me.channel
+        currentChannel = self.ts3host.getServer(schid).me.channel
         
         if newChannelID == currentChannel.channelID:
-            user = self.host.getUser(schid, clientID)
+            user = self.ts3host.getUser(schid, clientID)
             self.printWelcome(user)
     
     def processUserCommand(self, user, command, public=False):
-        nickname = user.name
-        if not nickname:
-            self.printLogMessage("User command could not be executed: Invalid nickname...", logLevel.ERROR)
-            return False
-        
         tokens = command.split(' ')
         if len(tokens) == 0:
             return False
@@ -609,19 +612,19 @@ class audiobot(ts3plugin):
         if tokens[0] in self.registeredCommands:
             cmd = self.registeredCommands[tokens[0]]
             if cmd.permissionlevel > user.perm:
-                self.printLogMessage('User \"{0}\" was denied acces to \"{1}\"'.format(nickname, command))
+                user.logMsg('User \"{0}\" was denied acces to \"{1}\"'.format(user.name, command), logLevel.INFORMATIVE)
                 if public and user.perm >= 0:
-                    self.msgChanel(user.schid, "%s, Not authorised..." % nickname)
+                    self.msgChanel(user.schid, "%s, Not authorised..." % user.name)
                 else:
                     user.sendTextMsg("Not authorised to run \"%s\"" % (command))
                 return False
             cmd.run(user, tokens[1:], public=public)
-            self.printLogMessage('User \"{0}\" executed \"{1}\"'.format(nickname, command))
+            user.logMsg('User \"{0}\" uid: {1} executed \"{2}\"'.format(user.name, user.uid, command), logLevel.INFORMATIVE)
             return True
         else:
-            self.printLogMessage('User \"{0}\" tried to run an unknown command \"{1}\"'.format(nickname, command))
+            user.logMsg('User \"{0}\" tried to run an unknown command \"{1}\"'.format(user.name, command), logLevel.INFORMATIVE)
             if public:
-                self.msgChanel(user.schid, "%s, Invalid request..." % nickname)
+                self.msgChanel(user.schid, "%s, Invalid request..." % user.name)
             else:
                 user.sendTextMsg("Invalid command \"%s\"" % (command))
             #Send the reminder in private for both public and private request.
@@ -630,7 +633,7 @@ class audiobot(ts3plugin):
         
     
     def processCommand(self, schid, command):
-        return self.processUserCommand(self.host.getServer(schid).me, command, public=False)
+        return self.processUserCommand(self.ts3host.getServer(schid).me, command, public=False)
     
     def onTextMessageEvent(self, schid, targetMode, toID, fromID, fromName, fromUniqueIdentifier, message, ffIgnored):
         (err, myid) = ts3lib.getClientID(schid)
@@ -641,8 +644,6 @@ class audiobot(ts3plugin):
         if fromID == myid:
             #Try to avoid to reply to self generated messages.
             return
-        
-        user = self.host.getUser(schid, fromID)
         
         publicRequest = False
         if toID == 0:
@@ -662,6 +663,8 @@ class audiobot(ts3plugin):
                     return
         if toID == myid:
             #Message for AudioBot.
+            user = self.ts3host.getUser(schid, fromID)
+            user.logMsg("Message received from %s id %s perm %s" % (fromName, fromUniqueIdentifier, userperm.getString(user.perm)), logLevel.DEBUG)
             if not fromName or not fromName.strip():
                 #Invalid sender name
                 self.printLogMessage("UserID \"%s\" has an invalid name." % fromUniqueIdentifier, logLevel.ERROR)
@@ -669,7 +672,6 @@ class audiobot(ts3plugin):
             
             if user.perm >= userperm.NEUTRAL:
                 #Unknown, Friends or above.
-                self.printLogMessage("%s id %s perm %s" % (fromName, fromUniqueIdentifier, userperm.getString(user.perm)), logLevel.NOTICE)
                 cmdExecuted = self.processUserCommand(user, message, public=publicRequest)
             else:
                 #Banned user
@@ -679,7 +681,7 @@ class audiobot(ts3plugin):
                     self.replyTo(schid, fromID, "Banned...")
                     err = ts3lib.clientChatClosed(schid, fromUniqueIdentifier, fromID)
                     if err != ts3defines.ERROR_ok:
-                        self.printLogMessage("Error closing chat: (%s, %s)" % (err, ts3lib.getErrorMessage(err)[1]), logLevel.ERROR)
+                        user.logMsg("Error closing chat: (%s, %s)" % (err, ts3lib.getErrorMessage(err)[1]), logLevel.ERROR)
     
     def onPlaylistModifiedEvent(self):
         self.updateChannelDescription()
@@ -688,25 +690,25 @@ class audiobot(ts3plugin):
         pass
     
     def onTalkStatusChangeEvent(self, schid, status, isReceivedWhisper, clientID):
-        user = self.host.getUser(schid, clientID)
+        user = self.ts3host.getUser(schid, clientID)
         #self.printLogMessage("Talk status change: %s, Status: %s" % (user.name, status), logLevel.TRACE)
         #Kicks a client from its current channel to the default one.
         #err = ts3lib.requestMuteClients(serverConnectionHandlerID, clientIDArray)
         #err = ts3lib.requestClientKickFromChannel(schid, clientID, kickReason)
     
     def onClientChatComposingEvent(self, schid, clientID, clientUniqueIdentity):
-        user = self.host.getUser(schid, clientID)
+        user = self.ts3host.getUser(schid, clientID)
         self.printLogMessage("Composing: %s id %s perm %s" % (user.name, user.uid, userperm.getString(user.perm)), logLevel.TRACE)
     
     def onClientChatClosedEvent(self, schid, clientID, clientUniqueIdentity):
-        user = self.host.getUser(schid, clientID)
+        user = self.ts3host.getUser(schid, clientID)
         self.printLogMessage("Closed chat: %s id %s perm %s" % (user.name, user.uid, userperm.getString(user.perm)), logLevel.NOTICE)
     
     def onClientPokeEvent(self, schid, fromClientID, pokerName, pokerUID, message, ffIgnored):
         #Do not ignore.
         ignorePoke = 0
         try:
-            user = self.host.getUser(schid, fromClientID)
+            user = self.ts3host.getUser(schid, fromClientID)
             
             #is it me?
             if user.clientID == user.server.me:
@@ -725,12 +727,12 @@ class audiobot(ts3plugin):
         
     
     def onUpdateClientEvent(self, schid, clientID, invokerID, invokerName, invokerUniqueIdentifier):
-        user = self.host.getUser(schid, clientID)
+        user = self.ts3host.getUser(schid, clientID)
         self.printLogMessage("{name}.onUpdateClientEvent: schid: {0} | user: {1} | invokerID: {2} | invokerName: {3} | invokerUniqueIdentifier: {4}".format(schid,user.name,invokerID,invokerName,invokerUniqueIdentifier,name=self.name))
         if not user.isInChannel():
             return
         if self.channelDenyRecording and user.isRecording:
-            self.printLogMessage("User kicked from channel for recording: {n} uid: {u}".format(n=user.name, u=user.uid))
+            user.logMsg("User kicked from channel for recording: {n} uid: {u}".format(n=user.name, u=user.uid))
             user.kick("Recording is not allowed")
         
     
@@ -743,7 +745,7 @@ class audiobot(ts3plugin):
         #This is called for each servergroup on the server requested with ts3lib.requestServerGroupList
         
         self.printLogMessage("{name}.onServerGroupListEvent: schid: {0} | serverGroupID: {1} | name: {2} | atype: {3} | iconID: {4} | saveDB: {5}".format(schid,serverGroupID,name,atype,iconID,saveDB,name=self.name), logLevel.TRACE)
-        srv = self.host.getServer(schid)
+        srv = self.ts3host.getServer(schid)
         srv.updateServerGroup(serverGroupID, name, iconID)
     
     def onServerGroupClientListEvent(self, schid, serverGroupID, clientDatabaseID, clientNameIdentifier, clientUniqueID):
@@ -768,11 +770,11 @@ class audiobot(ts3plugin):
         #ts3lib.requestChannelGroupList(ts3lib.getCurrentServerConnectionHandlerID())
         
         self.printLogMessage("{name}.onChannelGroupListEvent: schid: {0} | channelGroupID: {1} | name: {2} | atype: {3} | iconID: {4} | saveDB: {5}".format(schid,channelGroupID,name,atype,iconID,saveDB,name=self.name), logLevel.TRACE)
-        srv = self.host.getServer(schid)
+        srv = self.ts3host.getServer(schid)
         srv.updateChannelGroup(channelGroupID, name, iconID)
     
     def onClientChannelGroupChangedEvent(self, schid, channelGroupID, channelID, clientID, invokerID, invokerName, invokerUniqueIdentifier):
-        user = self.host.getUser(schid, clientID)
+        user = self.ts3host.getUser(schid, clientID)
         self.printLogMessage("{name}.onClientChannelGroupChangedEvent: schid: {0} | user: {1} | channel:{2} | channelGroup:{3} | invokerID: {4} | invokerName: {5} | invokerUniqueIdentifier: {6}".format(schid,user.name,channelID,channelGroupID,invokerID,invokerName,invokerUniqueIdentifier,name=self.name))
         #TODO Update channel group ???
     
@@ -945,23 +947,17 @@ class audiobot(ts3plugin):
         userID = user.clientID
         videoUrl = None
         
-        def reply (msg):
-            if public:
-                self.msgChanel(schid, msg)
-            else:
-                self.replyTo(schid, userID, msg)
-        
         if args.url == 'check_string_for_empty':
             if self.audioPlayerStatus == 2:
                 #Video is paused, resume it.
-                self.printLogMessage("Trying to resume: %s" % self.mozRepl.tab_movie_player_play(play=True, tabID=0))
+                user.logMsg("Trying to resume: %s" % self.mozRepl.tab_movie_player_play(play=True, tabID=0))
                 return
             
             videoUrl = self.audioSession['lastsong']['url']
             if videoUrl:
-                reply ("Resuming [URL]%s[/URL]" % videoUrl)
+                print ("Resuming [URL]%s[/URL]" % videoUrl)
             else:
-                reply ("Nothing to resume from, missing url argument...")
+                print ("Nothing to resume from, missing url argument...")
                 return
         else:
             videoUrl = args.url
@@ -971,14 +967,14 @@ class audiobot(ts3plugin):
             videoUrl = videoUrl[len("[URL]"):0-(len("[/URL]"))]
         
         if not videoUrl.startswith("https://www.youtube.com/") and not videoUrl.startswith("https://youtu.be/"):
-            reply ("The provided Url is not a Youtube video, unsuported content \"%s\"" % videoUrl)
+            print ("The provided Url is not a Youtube video, unsuported content \"%s\"" % videoUrl)
             return
         
         videoUrl = YouTubeParser.sanitizeUrl(videoUrl, fullUrl=True, allowPlaylist=True)
         
-        self.replyTo(schid, userID, "Sending url...")
+        user.sendTextMsg("Sending url...")
         self.mozRepl.set_tab_url(videoUrl, tabID=0)
-        self.replyTo(schid, userID, "Received the url with success, your song \"should\" start playing now.")
+        user.sendTextMsg("Received the url with success, your song \"should\" start playing now.")
         if public:
             self.msgChanel(schid, "%s, Request received." % user.name)
         else:
@@ -991,19 +987,13 @@ class audiobot(ts3plugin):
         
         videoUrl = None
         
-        def reply (msg):
-            if public:
-                self.msgChanel(schid, msg)
-            else:
-                self.replyTo(schid, userID, msg)
-        
         if args.url == 'check_string_for_empty':
             videoUrl = self.audioSession['lastsong']['url']
             #TODO, open next video if currently playing.
             if videoUrl:
-                reply ("Looking at [URL]%s[/URL] for Mix Url" % videoUrl)
+                print ("Looking at [URL]%s[/URL] for Mix Url" % videoUrl)
             else:
-                reply ("No song to remix, missing url argument...")
+                print ("No song to remix, missing url argument...")
                 return
         else:
             videoUrl = args.url
@@ -1014,7 +1004,7 @@ class audiobot(ts3plugin):
         
         #Is from Youtube.
         if not videoUrl.startswith("https://www.youtube.com/") and not videoUrl.startswith("https://youtu.be/"):
-            reply ("The provided Url is not a Youtube video, unsuported content \"%s\"" % videoUrl)
+            print ("The provided Url is not a Youtube video, unsuported content \"%s\"" % videoUrl)
             return
         
         #Clean the provided url.
@@ -1023,10 +1013,10 @@ class audiobot(ts3plugin):
         #Get Mix url.
         mixUrl = YouTubeParser.grab_mix_playlist_id(videoUrl, fullUrl=True)
         if (mixUrl == None):
-            reply ("        No Mix Url found...")
+            print ("        No Mix Url found...")
             return
         else:
-            reply ("        Found Mix Url [URL]%s[/URL]" % mixUrl)
+            print ("        Found Mix Url [URL]%s[/URL]" % mixUrl)
             videoUrl = mixUrl
         
         #If playing or buffering
@@ -1039,27 +1029,26 @@ class audiobot(ts3plugin):
             else:
                 self.msgChanel(schid, "Received [URL]%s[/URL] from %s" % (videoUrl, user.name))
         else:
-            self.replyTo(schid, userID, "Sending url...")
+            user.sendTextMsg("Sending url...")
             self.mozRepl.set_tab_url(videoUrl, tabID=0)
-            self.replyTo(schid, userID, "Received the url with success, your song \"should\" start playing now.")
+            user.sendTextMsg("Received the url with success, your song \"should\" start playing now.")
             if public:
                 self.msgChanel(schid, "%s, Request received." % user.name)
             else:
                 self.msgChanel(schid, "Received [URL]%s[/URL] from %s" % (videoUrl, user.name))
     
     def cmd_stop(self, user, args=None, public=False):
-        schid = user.schid
-        userID = user.clientID
-        
         if self.audioPlayerStatus == playerstatus.PLAYING:
             #Video is playing, pause it.
             self.mozRepl.tab_movie_player_play(play=False, tabID=0)
+            self.ts3host.sendTextMsg("Stopped by %s" % user.name)
             return
         
-        self.replyTo(schid, userID, "Stopping...")
+        #Invalid status send firefox to a blank page.
+        user.sendTextMsg("Stopping...")
         self.mozRepl.set_tab_url("about:blank", tabID=0)
-        self.replyTo(schid, userID, "Received the request with success, sound broadcast will stop...")
-        self.msgChanel(schid, "I was asked to stop by %s" % user.name)
+        user.sendTextMsg("Received the request with success, sound broadcast will stop...")
+        self.ts3host.sendTextMsg("Stopped by %s" % user.name)
     
     def cmd_nowplaying(self, user, args=None, public=False):
         print(self.formatCurrentlyPlaying(msg="Currently playing:"))
@@ -1072,12 +1061,6 @@ class audiobot(ts3plugin):
         schid = user.schid
         userID = user.clientID
         
-        def reply (msg):
-            if public:
-                self.msgChanel(schid, msg)
-            else:
-                self.replyTo(schid, userID, msg)
-        
         if args.url == 'check_string_for_empty':
             #Skip to next video.
             nextUrl = None
@@ -1089,13 +1072,13 @@ class audiobot(ts3plugin):
             else:
                 nextUrl = self.mozRepl.get_tab_elementByClassName_href("ytp-next-button ytp-button", tabID=0)
             if nextUrl:
-                reply ("        Found next Url [URL]%s[/URL]" % nextUrl)
+                print ("        Found next Url [URL]%s[/URL]" % nextUrl)
             else:
-                reply ("        No next Url found in the current page...")
+                print ("        No next Url found in the current page...")
                 return
-            self.replyTo(schid, userID, "Sending url...")
+            user.sendTextMsg("Sending url...")
             self.mozRepl.set_tab_url(nextUrl, tabID=0)
-            self.replyTo(schid, userID, "Received the url with success, your song \"should\" start playing now.")
+            user.sendTextMsg("Received the url with success, your song \"should\" start playing now.")
             if public:
                 self.msgChanel(schid, "%s, Request received." % user.name)
             else:
@@ -1110,14 +1093,14 @@ class audiobot(ts3plugin):
         
         #Is from Youtube.
         if not videoUrl.startswith("https://www.youtube.com/") and not videoUrl.startswith("https://youtu.be/"):
-            reply ("The provided Url is not a Youtube video, unsuported content \"%s\"" % videoUrl)
+            print ("The provided Url is not a Youtube video, unsuported content \"%s\"" % videoUrl)
             return
         
         #Clean the provided url.
         videoUrl = YouTubeParser.sanitizeUrl(videoUrl, fullUrl=True, allowPlaylist=True, allowTime=True)
         
         self.addToPlayList(videoUrl, user=user, index=0)
-        reply ("Url added as the next item.")
+        print ("Url added as the next item.")
         
     
     def cmd_add(self, user, args=None, public=False):
@@ -1149,7 +1132,7 @@ class audiobot(ts3plugin):
         if args.level == -1.0:
             msg = "Volume: %s%%" % self.mozRepl.tab_movie_player_getVolume(tabID=0)
             if public:
-                self.host.sendTextMsg(msg)
+                self.ts3host.sendTextMsg(msg)
             else:
                 user.sendTextMsg(msg)
             return
@@ -1158,9 +1141,9 @@ class audiobot(ts3plugin):
             raise ValueError("level should be in between 0 - 100")
         self.mozRepl.tab_movie_player_setVolume(args.level, tabID=0)
         if public:
-            self.host.sendTextMsg("%s changed the volume to %s%%" % (user.name, args.level))
+            self.ts3host.sendTextMsg("%s changed the volume to %s%%" % (user.name, args.level))
         else:
-            self.host.sendTextMsg("%s changed the volume to %s%%" % (user.name, args.level))
+            self.ts3host.sendTextMsg("%s changed the volume to %s%%" % (user.name, args.level))
             user.sendTextMsg("Volume changed to %s%%" % args.level)
     
     def cmd_ban(self, user, args=None, public=False):

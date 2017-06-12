@@ -126,13 +126,18 @@ class YouTubeParser():
     def textFromHTML(html):
         if not html:
             return None
+        txtResult = None
         if bs4Imported:
             bs = bs4.BeautifulSoup(html)
-            return bs.get_text()
+            txtResult = bs.get_text()
         else:
             parser = HTMLTextExtractor()
             parser.feed(html)
-            return parser.get_text()
+            txtResult = parser.get_text()
+        if txtResult:
+            return txtResult.strip()
+        else:
+            return None
     
     @staticmethod
     def sanitizeUrl(url, fullUrl=False, allowPlaylist=False, allowTime=False):

@@ -293,6 +293,7 @@ class ts3Server(object):
         self.serverConnectionHandlerID = schid
         self._name = name
         self._me = None
+        host.logMsg("New server object %s" % schid, logLevel.TRACE)
     
     @property
     def channels(self):
@@ -460,6 +461,7 @@ class ts3ServerGroup(object):
         self.groupID = gid
         self.name = name
         self.iconID = iconID
+        server.logMsg("New serverGroup object %s:%s" % (server.schid, gid), logLevel.TRACE)
     
     @property
     def schid(self):
@@ -472,7 +474,8 @@ class ts3ChannelGroup(object):
         self.groupID = gid
         self.name = name
         self.iconID = iconID
-    
+        server.logMsg("New channelGroup object %s:%s" % (server.schid, gid), logLevel.TRACE)
+
     @property
     def schid(self):
         return self.serverConnectionHandlerID
@@ -487,7 +490,8 @@ class ts3Channel(object):
         self.serverConnectionHandlerID = server.schid
         self.channelID = cid
         self._name = name
-    
+        server.logMsg("New channel object %s:%s" % (server.schid, cid), logLevel.TRACE)
+
     @property
     def description(self):
         (err, desc) = ts3lib.getChannelVariableAsString(self.schid, self.channelID, ts3defines.ChannelProperties.CHANNEL_DESCRIPTION)
@@ -560,6 +564,12 @@ class ts3Channel(object):
         err = ts3lib.requestSendChannelTextMsg(self.schid, msg, self.channelID)
         if err != ts3defines.ERROR_ok: raise ts3Error("Error sending message to channel: (%s, %s)" % (err, ts3lib.getErrorMessage(err)[1]))
     
+    def printMsg(self, msg, color='#0655d3'):
+        if color: msg = BBCode.color(msg, color)
+        ts3lib.printMessage(self.schid, msg, ts3defines.PluginMessageTarget.PLUGIN_MESSAGE_TARGET_CHANNEL)
+    
+    def logMsg(self, msg, level=logLevel.DEBUG):
+        self.server.logMsg(msg, level)
     
 
 class ts3User(object):
@@ -572,7 +582,8 @@ class ts3User(object):
         self._name = name
         self._permissionlevel = perm
         self._databaseID = None
-    
+        server.logMsg("New user object %s:%s" % (server.schid, cid), logLevel.TRACE)
+
     @property
     def avatar(self):
         """
@@ -811,6 +822,9 @@ class ts3User(object):
             err = ts3lib.requestClientKickFromChannel(self.schid, self.clientID, kickReason)
         if err != ts3defines.ERROR_ok: raise ts3Error("Error kicking client: (%s, %s)" % (err, ts3lib.getErrorMessage(err)[1]))
     
+    def logMsg(self, msg, level=logLevel.DEBUG):
+        self.server.logMsg(msg, level)
+    
     def mute(self):
         # requestMuteClients expect a list of clients.
         err = ts3lib.requestMuteClients(self.schid, [self.clientID])
@@ -844,7 +858,8 @@ class ts3User(object):
 class ts3UserSelf(ts3User):
     def __init__(self, server, cid):
         super().__init__(server, cid, perm=userperm.LOCAL)
-        
+        server.logMsg("New userSelf object %s:%s" % (server.schid, cid), logLevel.TRACE)
+    
     @property
     def description(self):
         return super().description
