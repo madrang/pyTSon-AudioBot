@@ -11,7 +11,7 @@ try:
 except ImportError:
     #Fix for TS3 not including requests by default.
     #If not found, use the one included in the audiobot folder.
-    import audiobot.requests
+    import audiobot.requests as requests
 import sys, os
 from urllib.parse import urlparse, parse_qs, urlencode
 import re
