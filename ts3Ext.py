@@ -843,15 +843,18 @@ class ts3User(object):
         err = ts3lib.requestSendPrivateTextMsg(self.schid, msg, self.clientID)
         if err != ts3defines.ERROR_ok: raise ts3Error("Error sending message to client: (%s, %s)" % (err, ts3lib.getErrorMessage(err)[1]))
     
-    def getServerGroupId(self):
-        (error, sgid) = ts3lib.getClientVariableAsInt(self.schid, self.clientID, ts3defines.ClientPropertiesRare.CLIENT_SERVERGROUPS)
+    def getServerGroups(self):
+        #Returns a coma separated lists of ids.
+        (error, sgid) = ts3lib.getClientVariableAsString(self.schid, self.clientID, ts3defines.ClientPropertiesRare.CLIENT_SERVERGROUPS)
         if err != ts3defines.ERROR_ok:
-            raise ts3Error("Error getting client server group id: (%s, %s)" % (err, ts3lib.getErrorMessage(err)[1]))
-        return sgid
+            raise ts3Error("Error getting client server groups list: (%s, %s)" % (err, ts3lib.getErrorMessage(err)[1]))
+        #TODO Return ServerGroups Objects.
+        return map(int, sgid.split(','))
     
     def getChannelGroupId(self):
         (err, cgid) = ts3lib.getClientVariableAsUInt64(self.schid, self.clientID, ts3defines.ClientPropertiesRare.CLIENT_CHANNEL_GROUP_ID)
         if err != ts3defines.ERROR_ok: raise ts3Error("Error getting client channel group id: (%s, %s)" % (err, ts3lib.getErrorMessage(err)[1]))
+        #TODO Return ChannelGroups Object.
         return cgid
     
 
