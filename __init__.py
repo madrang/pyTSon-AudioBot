@@ -66,6 +66,7 @@ class audiobot(ts3plugin):
     registeredCommands = {}
     
     audioPlayerStatus = playerstatus.UNSTARTED
+    audioEndTime = None
     sessionPklPath = "audiosession.pkl"
     audioSession = {
         'lastsong':{
@@ -502,6 +503,7 @@ class audiobot(ts3plugin):
             elif playerStatus == playerstatus.PLAYING:
                 #Video Playing
                 self.audioPlayerStatus = playerStatus
+                self.audioEndTime = None
                 if len(self.audioSession['playlist']) >= 1:
                     #Videos waiting in the playlist...
                     if 'duration' in self.audioSession['lastsong']:
@@ -523,17 +525,26 @@ class audiobot(ts3plugin):
             elif playerStatus == playerstatus.ENDED:
                 #Video ended
                 self.audioPlayerStatus = playerStatus
-                nextUrl = None
-                if len(self.audioSession['playlist']) >= 1:
-                    #TODO Dont discard song data
-                    nextItem = self.audioSession['playlist'].pop(0)
-                    nextUrl = nextItem['url']
-                    self.onPlaylistModifiedEvent()
-                else:
-                    nextUrl = self.audioSession['ytmix']['url']
-                if nextUrl:
-                    self.mozRepl.set_tab_url(nextUrl, tabID=0)
-                    return
+                
+                if not self.audioEndTime:
+                    self.audioEndTime = default_timer()
+                    self.printLogMessage("Song ended, Waiting...", logLevel.DEBUG)
+                        
+                #Leave a little time to Youtube to react before loading from ytmix.
+                #Avoid reloading the same mix.
+                if 3 < default_timer() - self.audioEndTime:
+                    nextUrl = None
+                    if len(self.audioSession['playlist']) >= 1:
+                        #TODO Dont discard song data
+                        nextItem = self.audioSession['playlist'].pop(0)
+                        nextUrl = nextItem['url']
+                        self.onPlaylistModifiedEvent()
+                    else:
+                        nextUrl = self.audioSession['ytmix']['url']
+                    if nextUrl:
+                        self.printLogMessage("Song ended, starting: %s" % nextUrl, logLevel.DEBUG)
+                        self.mozRepl.set_tab_url(nextUrl, tabID=0)
+                        return
             else:
                 self.audioPlayerStatus = playerstatus.UNSTARTED
                 self.printLogMessage("Unknown Player Status: %s" % playerStatus)
