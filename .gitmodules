@@ -1,0 +1,3 @@
+[submodule "ts3Ext"]
+	path = ts3Ext
+	url = https://github.com/madrang/ts3Ext
