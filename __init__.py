@@ -31,7 +31,7 @@ import re
 import pickle
 from timeit import default_timer
 
-from audiobot.ts3Ext import logLevel, userperm, ts3Error, ts3SessionHost, plugincommand, BBCode
+from audiobot.ts3Ext import logLevel, userperm, ts3Error, ts3SessionHost, ts3PluginCommand, BBCode
 from audiobot.botplayer import playerstatus, basePlayer
 
 from audiobot.youtubeparser import YouTubeParser
@@ -249,7 +249,7 @@ class audiobot(ts3plugin):
                                 argument_default=None,
                                 error_on_confilct=True,
                                 add_help=True):
-        botCmd = plugincommand.create(self, name, cmd,
+        botCmd = ts3PluginCommand.create(self, name, cmd,
                                                 arguments=arguments,
                                                 permLevel=permLevel,
                                                 usage=usage,
