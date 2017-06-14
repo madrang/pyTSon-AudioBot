@@ -330,10 +330,9 @@ class audiobot(ts3plugin):
             if title:
                 title = YouTubeParser.textFromHTML(title)
             #Result could be empty if page is still loading.
-            if title and title != self.audioSession['lastsong']['title']:
-                #Youtube has a tendency to reeuse the same DOM in firefox and cause it to return values from the previous page.
-                #Assume that if the video id is different we should get a different title.
-                
+            if not title:
+                self.printLogMessage("Result empty, is Tab still loading???")
+            else:
                 songInfo = {
                     #Browser page
                     'url':reservedTabUrl,
@@ -355,12 +354,16 @@ class audiobot(ts3plugin):
                         songInfo['artist'] = tprts[0].strip()
                         songInfo['title'] = tprts[1].strip()
                 
-                self.audioSession['lastsong'].update(songInfo)
-                updated = True
-                self.printLogMessage("Updated Currently playing.")
+                lastSong = self.audioSession['lastsong']
+                if songInfo['title'] == lastSong['title'] and songInfo['artist'] == lastSong['artist']:
+                    self.printLogMessage("Page returned the same song data, is Tab still loading???")
+                    #Youtube has a tendency to reeuse the same DOM in firefox and cause it to return values from the previous page.
+                    #Assume that if the video id is different we should get a different title.
+                else:
+                    self.audioSession['lastsong'].update(songInfo)
+                    updated = True
+                    self.printLogMessage("Updated Currently playing.")
                 
-            #Log the event if the page returned the same title.
-            elif title: self.printLogMessage("Page returned the same song data, is Tab still loading???")
             
             ytPlaylist = self.mozRepl.get_tab_elementByClassName_html("playlist-title", tabID=0)
             ytPlaylist = YouTubeParser.textFromHTML(ytPlaylist)
@@ -491,10 +494,15 @@ class audiobot(ts3plugin):
                 return
                
             playerStatus = self.mozRepl.get_tab_movie_player_state(tabID=0)
-            if playerStatus == playerstatus.UNSTARTED or playerStatus == playerstatus.BUFFERING:
-                #unstarted or buffering
+            if playerStatus == playerstatus.UNSTARTED:
+                #unstarted
                 self.audioPlayerStatus = playerStatus
                 self.printLogMessage("Player loading...")
+                return
+            if playerStatus == playerstatus.BUFFERING:
+                #buffering
+                self.audioPlayerStatus = playerStatus
+                self.printLogMessage("Song loading...")
                 return
             elif playerStatus == playerstatus.PAUSED:
                 #paused
